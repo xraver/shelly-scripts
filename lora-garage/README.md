@@ -41,6 +41,7 @@ Responsibilities:
 - Publish events to MQTT
 - Publish heartbeat information
 - Bridge LoRa data to Home Assistant or other MQTT consumers
+- Process periodic state synchronization
 
 ### Garage Node
 
@@ -53,6 +54,7 @@ Responsibilities:
 - Execute remote commands
 - Send LoRa notifications
 - Synchronize garage state
+- Send periodic state synchronization
 
 ## Hardware
 
@@ -89,6 +91,15 @@ CAK  Command acknowledged
 CST  Request status
 COP  Cover opened
 CCL  Cover closed
+```
+
+### State Synchronization
+
+```text
+O1  Cover opened, light ON
+O0  Cover opened, light OFF
+C1  Cover closed, light ON
+C0  Cover closed, light OFF
 ```
 
 ## Security

@@ -33,6 +33,7 @@ const LOG_LEVEL = LOG_INFO;
 const cfgAesKey = 'lora_aes_key';
 let aesKey = null;
 const CHECKSUM_SIZE = 4;
+const update_interval = 3600000; // 1h
 
 /* Protocol Messages - Lights */
 const msg_light_on      = "LON";
@@ -43,6 +44,11 @@ const msg_cover_ack     = "CAK";
 const msg_cover_opened  = "COP";
 const msg_cover_closed  = "CCL";
 const msg_cover_status  = "CST";
+/* Protocol Messages - Status */
+const msg_status_open_light_on   = "O1";
+const msg_status_open_light_off  = "O0";
+const msg_status_closed_light_on = "C1";
+const msg_status_closed_light_off= "C0";
 
 /* Door State */
 let lastDoorState = null;
@@ -54,6 +60,20 @@ function init() {
 
   /* load AES key from shelly configuration */
   loadAesKey();
+
+  /* Set update interval */
+  Timer.set(
+    update_interval,
+    true,
+    sendCurrentStatus
+  );
+  /* Force update after boostrap */
+  Timer.set(
+    5000,
+    false,
+    sendCurrentStatus
+  );
+  log(LOG_INFO, "Update interval set to " + update_interval + " ms");
 }
 
 /* Function to load AES key from Shelly configuration */
@@ -373,6 +393,22 @@ Shelly.addStatusHandler(function(e) {
     sendMessage(msg_cover_closed);
   }
 });
+
+/* Send current status */
+function sendCurrentStatus() {
+
+  if (lastDoorState === null) {
+    return;
+  }
+
+  let lightState =
+    Shelly.getComponentStatus("switch:0").output;
+
+  sendMessage(
+    (lastDoorState ? "O" : "C") +
+    (lightState ? "1" : "0")
+  );
+}
 
 /* Main task */
 init();

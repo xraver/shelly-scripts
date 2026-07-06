@@ -42,6 +42,11 @@ const msg_cover_ack     = "CAK";
 const msg_cover_opened  = "COP";
 const msg_cover_closed  = "CCL";
 const msg_cover_status  = "CST";
+/* Protocol Messages - Status */
+const msg_status_open_light_on   = "O1";
+const msg_status_open_light_off  = "O0";
+const msg_status_closed_light_on = "C1";
+const msg_status_closed_light_off= "C0";
 
 // Get MQTT prefix from config
 let mqttCfg;
@@ -363,13 +368,17 @@ Shelly.addEventHandler(function (event) {
     mqttPublish("/lora/raw_rx", decryptedMessage, false);
 
     /* Light On */
-    if (decryptedMessage === msg_light_on) {
+    if ((decryptedMessage === msg_light_on) ||
+        (decryptedMessage === msg_status_open_light_on) ||
+        (decryptedMessage === msg_status_closed_light_on) ) {
       log(LOG_INFO, "Light On");
       mqttPublish("/light/status", "ON", true);
     }
 
     /* Light Off */
-    if (decryptedMessage === msg_light_off) {
+    if ((decryptedMessage === msg_light_off) ||
+        (decryptedMessage === msg_status_open_light_off) ||
+        (decryptedMessage === msg_status_closed_light_off) ) {
       log(LOG_INFO, "Light Off");
       mqttPublish("/light/status", "OFF", true);
     }
@@ -379,12 +388,16 @@ Shelly.addEventHandler(function (event) {
       mqttPublish("/cover/ack", new Date().toISOString(), false);
     }
 
-    if (decryptedMessage === msg_cover_opened) {
+    if ((decryptedMessage === msg_cover_opened) ||
+        (decryptedMessage === msg_status_open_light_on) ||
+        (decryptedMessage === msg_status_open_light_off)) {
       log(LOG_INFO, "Cover opened");
       mqttPublish("/cover/status", "OPENED", true);
     }
 
-    if (decryptedMessage === msg_cover_closed) {
+    if ((decryptedMessage === msg_cover_closed) ||
+        (decryptedMessage === msg_status_closed_light_on) ||
+        (decryptedMessage === msg_status_closed_light_off)) {
       log(LOG_INFO, "Cover closed");
       mqttPublish("/cover/status", "CLOSED", true);
     }
