@@ -63,4 +63,4 @@ https://github.com/ALLTERCO/shelly-script-examples
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSEfile for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
