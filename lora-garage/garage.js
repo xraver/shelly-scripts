@@ -1,11 +1,25 @@
 /**
- * @title LoRa Message Receiver with AES Decryption and Checksum Verification
- * @description This script ....
+ * @title LoRa Garage - Remote Node
+ * @description Remote garage node responsible for door monitoring and event transmission via LoRa.
  * @status production
- * @link
  * @author Giorgio Ravera
  * @date 08/07/2026
  * @version 1.0
+ *
+ * Responsibilities:
+ * - Monitor garage door status
+ * - Monitor light status
+ * - Send encrypted LoRa notifications
+ * - Execute remote commands
+ * - Keep controller synchronized
+ *
+ * Hardware:
+ * - Shelly Gen4 device
+ * - Shelly LoRa Add-on
+ * - Shelly BLU Door/Window sensor
+ *
+ * Related:
+ * - home.js
  */
 
 // Log Level

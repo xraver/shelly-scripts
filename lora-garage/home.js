@@ -1,11 +1,24 @@
 /**
- * @title LoRa Message Sender with AES Encryption and Checksum
- * @description This script ....
+ * @title LoRa Garage - Home Controller
+ * @description Home node responsible for MQTT integration, LoRa message reception and state distribution.
  * @status production
- * @link
  * @author Giorgio Ravera
  * @date 08/07/2026
  * @version 1.0
+ *
+ * Responsibilities:
+ * - Receive encrypted LoRa messages
+ * - Verify message integrity
+ * - Bridge LoRa events to MQTT
+ * - Publish node heartbeat
+ * - Publish garage and lighting events
+ *
+ * Hardware:
+ * - Shelly Gen4 device
+ * - Shelly LoRa Add-on
+ *
+ * Related:
+ * - garage.js
  */
 
 // Log Level

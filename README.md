@@ -1,48 +1,48 @@
 # Shelly Scripts
 
-Collection of Shelly scripts developed for automation, monitoring, remote control, and integration scenarios.
+Collection of Shelly scripts developed for automation, monitoring, remote control and integration scenarios.
 
-The scripts in this repository are designed to run on Shelly devices with scripting support and focus on reliability, simplicity, and production-ready deployments.
+The scripts in this repository are designed to run on Shelly devices with scripting support and focus on reliability, simplicity and production-ready deployments.
 
 ## Repository Structure
 
 ```text
 .
-├── projects/
-│   ├── lora-garage/
-│   └── ...
+├── lora-garage/
+│   ├── home.js
+│   ├── garage.js
+│   └── README.md
 └── README.md
 ```
 
-Each project is self-contained and includes its own documentation, scripts, and configuration details.
-
-## Projects
+## Available Projects
 
 ### LoRa Garage
 
-A distributed garage door monitoring and control system based on:
+A distributed garage monitoring and control system based on:
 
 - Shelly Gen4 devices
 - Shelly LoRa Add-on
-- Shelly BLU Door/Window sensor
-- AES-encrypted LoRa communication
+- Shelly BLU Door/Window
+- AES encrypted LoRa communication
+- MQTT integration
 
-Project documentation:
+Documentation:
 
 ```text
-projects/lora-garage/README.md
+lora-garage/README.md
 ```
 
-## Goals
+## Design Principles
 
-This repository aims to provide:
+The projects in this repository emphasize:
 
-- Reusable Shelly scripts
-- Real-world automation examples
-- Production-ready implementations
-- Secure communication patterns
+- Reusability
 - Event-driven architectures
-- Well-documented projects
+- Production-ready deployments
+- Secure communication
+- Minimal resource usage
+- Clear documentation
 
 ## Compatibility
 
@@ -50,10 +50,10 @@ Scripts are primarily developed and tested on:
 
 - Shelly Gen4 devices
 - Shelly devices with scripting support
-- Shelly BLU ecosystem devices
+- Shelly BLU devices
 - Shelly LoRa Add-on
 
-Individual project documentation may contain additional requirements.
+Project-specific requirements are documented within each project folder.
 
 ## References
 
@@ -63,4 +63,4 @@ https://github.com/ALLTERCO/shelly-script-examples
 
 ## License
 
-MIT License
+This project is licensed under the MIT License. See the [LICENSEfile for details.
