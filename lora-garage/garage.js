@@ -46,6 +46,7 @@ const msg_cover_status  = "CST";
 /* Garage */
 let lastDoorState = null;
 
+/* Init */
 function init() {
   /* Init */
   log(LOG_INFO, "LoRa Remote Node started");

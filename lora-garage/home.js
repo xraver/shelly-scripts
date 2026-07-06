@@ -46,25 +46,13 @@ const msg_cover_status  = "CST";
 let mqttCfg;
 let mqttPrefix;
 
+/* Init */
 function init() {
   /* Init */
   log(LOG_INFO, "LoRa MQTT Bridge started");
 
-  // Get MQTT prefix from config
-  mqttCfg = Shelly.getComponentConfig("mqtt");
-  mqttPrefix = mqttCfg.topic_prefix;
-  if (!mqttPrefix || mqttPrefix === "") {
-    mqttPrefix = Shelly.getDeviceInfo().id;
-  }
-
-  mqttPublish("/lora/online", "true", false);
-  mqttPublish("/lora/heartbeat", new Date().toISOString(), false);
-
-  /* Refresh every 5 minutes */
-  Timer.set(300000, true, function() {
-    mqttPublish("/lora/online", "true", true);
-    mqttPublish("/lora/heartbeat", new Date().toISOString(), false);
-  });
+  /* Init MQTT */
+  initMQTT();
 }
 
 /* get current data & time */
@@ -119,6 +107,68 @@ function log(level, msg) {
   );
 }
 
+/* Initialize MQTT Commands */
+function initMQTT() {
+
+  if (!MQTT.isConnected()) {
+    log(LOG_WARN, "MQTT not connected");
+    return;
+  }
+
+  // Get MQTT prefix from config
+  mqttCfg = Shelly.getComponentConfig("mqtt");
+  mqttPrefix = mqttCfg.topic_prefix;
+  if (!mqttPrefix || mqttPrefix === "") {
+    mqttPrefix = Shelly.getDeviceInfo().id;
+  }
+
+  mqttPublish("/lora/online", "true", false);
+  mqttPublish("/lora/heartbeat", new Date().toISOString(), false);
+
+  /* Refresh every 5 minutes */
+  Timer.set(300000, true, function() {
+    mqttPublish("/lora/online", "true", true);
+    mqttPublish("/lora/heartbeat", new Date().toISOString(), false);
+  });
+
+  MQTT.subscribe(
+    mqttPrefix + "/cover/set",
+    function(topic, message) {
+
+      log(
+        LOG_INFO,
+        "[MQTT] " + topic + " = " + message
+      );
+
+      if (message === "TOGGLE") {
+        sendMessage(msg_cover_toggle);
+      }
+    }
+  );
+
+  MQTT.subscribe(
+    mqttPrefix + "/light/set",
+    function(topic, message) {
+
+      log(
+        LOG_INFO,
+        "[MQTT] " + topic + " = " + message
+      );
+
+      if (message === "ON") {
+        sendMessage(msg_light_on);
+      }
+
+      if (message === "OFF") {
+        sendMessage(msg_light_off);
+      }
+    }
+  );
+
+  log(LOG_INFO, "MQTT subscriptions active");
+}
+
+/* MQTT Publish */
 function mqttPublish(topic, payload, retain) {
   if (!MQTT.isConnected()) {
     return;
