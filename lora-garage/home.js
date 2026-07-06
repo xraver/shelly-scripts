@@ -28,7 +28,7 @@ const LOG_INFO  = 2;
 const LOG_DEBUG = 3;
 const LOG_LEVEL = LOG_INFO;
 
-//AES key is only for example, generate unique key!!
+//AES key is only for example, generate unique key!! (openssl rand -hex 32)
 const aesKey = 'af22a880475e5d71ddf417bd48a3ae1ffee93da92d78556ac476acafc9869140';
 const CHECKSUM_SIZE = 4;
 
