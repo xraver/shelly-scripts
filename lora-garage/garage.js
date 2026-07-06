@@ -29,8 +29,9 @@ const LOG_INFO  = 2;
 const LOG_DEBUG = 3;
 const LOG_LEVEL = LOG_INFO;
 
-//AES key is only for example, generate unique key!! (openssl rand -hex 32)
-const aesKey = 'af22a880475e5d71ddf417bd48a3ae1ffee93da92d78556ac476acafc9869140';
+// LoRa Parameters
+const cfgAesKey = 'lora_aes_key';
+let aesKey = null;
 const CHECKSUM_SIZE = 4;
 
 /* Protocol Messages - Lights */
@@ -43,13 +44,43 @@ const msg_cover_opened  = "COP";
 const msg_cover_closed  = "CCL";
 const msg_cover_status  = "CST";
 
-/* Garage */
+/* Door State */
 let lastDoorState = null;
 
 /* Init */
 function init() {
   /* Init */
   log(LOG_INFO, "LoRa Remote Node started");
+
+  /* load AES key from shelly configuration */
+  loadAesKey();
+}
+
+/* Function to load AES key from Shelly configuration */
+function loadAesKey() {
+  /* get AES key */
+  Shelly.call(
+    "KVS.Get",
+    {
+      key: cfgAesKey
+    },
+    function(result, error_code, error_message) {
+
+      if (error_code !== 0) {
+        throw new Error(
+          "FATAL: unable to load lora_aes_key: " +
+          error_message
+        );
+      }
+
+      log(
+        LOG_INFO,
+        "AES Key: " + result.value
+      );
+
+      aesKey = result.value;
+    }
+  );
 }
 
 /* get current data & time */

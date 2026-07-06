@@ -12,7 +12,7 @@ The system consists of two independent Shelly nodes communicating through LoRa.
 ┌─────────────────────────────┐
 │          Home Node          │
 │           home.js           │
-┌──────────────⇅──────────────┐
+└──────────────⇅──────────────┘
                │
                │ LoRa
                │
@@ -95,7 +95,7 @@ CCL  Cover closed
 
 All payloads are:
 
-- AES encrypted
+- AES encrypted: configure a KVS entry named lora_aes_key containing a 256-bit AES key. Example: openssl rand -hex 32
 - Checksum protected
 - Validated before processing
 
@@ -111,7 +111,7 @@ bthomesensor:201
 
 No polling is used.
 
-The current cover status is transmitted automatically whenever a state change is detected.
+Garage state changes are transmitted automatically whenever the cover or light status changes.
 
 ## MQTT Topics
 
