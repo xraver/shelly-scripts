@@ -33,6 +33,11 @@ const cfgAesKey = 'lora_aes_key';
 let aesKey = null;
 const CHECKSUM_SIZE = 4;
 
+/* Garage Synchronization */
+const GARAGE_TIMEOUT = 7200000; // 2h
+const UPDATE_INTERVAL = GARAGE_TIMEOUT/2; // 1h
+const GARAGE_CHECK_INTERVAL = 600000; // 10 min
+
 /* Protocol Messages - Lights */
 const msg_light_on      = "LON";
 const msg_light_off     = "LOF";
@@ -41,16 +46,19 @@ const msg_cover_toggle  = "CTG";
 const msg_cover_ack     = "CAK";
 const msg_cover_opened  = "COP";
 const msg_cover_closed  = "CCL";
-const msg_cover_status  = "CST";
 /* Protocol Messages - Status */
+const msg_status_request         = "SRQ";
 const msg_status_open_light_on   = "O1";
 const msg_status_open_light_off  = "O0";
 const msg_status_closed_light_on = "C1";
 const msg_status_closed_light_off= "C0";
 
-// Get MQTT prefix from config
+// MQTT configuration
 let mqttCfg;
 let mqttPrefix;
+
+/* Garage Last Seen timestamp */
+let lastGarageSeen = null;
 
 /* Init */
 function init() {
@@ -62,6 +70,26 @@ function init() {
 
   /* Init MQTT */
   initMQTT();
+
+  /* first check to init structures */
+  checkOnlineStatus();
+
+  /* Periodically check garage online status */
+  Timer.set(
+    GARAGE_CHECK_INTERVAL,
+    true,
+    checkOnlineStatus
+  );
+
+  /* Force status request after bootstrap */
+  Timer.set(
+    5000,
+    false,
+    function() {
+      sendMessage(msg_status_request);
+    }
+  );
+  log(LOG_INFO, "Garage check interval set to " + GARAGE_CHECK_INTERVAL + " ms");
 }
 
 /* Function to load AES key from Shelly configuration */
@@ -263,10 +291,19 @@ function generateChecksum(msg) {
 /* LoRa: Send Message */
 function sendMessage(message) {
 
-  mqttPublish("/lora/raw_tx", message, false);
+  /* check aes key */
+  if (!aesKey) {
+    log(LOG_WARN, "AES key not loaded");
+    return;
+  }
 
   const checkSumMessage = generateChecksum(message) + message;
   const encryptedMessage = encryptMessage(checkSumMessage, aesKey);
+
+  /* Publish raw message for debugging */
+  if(LOG_LEVEL >= LOG_DEBUG) {
+    mqttPublish("/lora/raw_tx", message, false);
+  }
 
   Shelly.call(
     'Lora.SendBytes',
@@ -346,6 +383,23 @@ function decryptMessage(buffer, keyHex) {
   return finalMessage;
 }
 
+/* Check Garage Status*/
+function checkOnlineStatus() {
+
+  let alive = false;
+
+  if (lastGarageSeen !== null) {
+    alive =
+      (Date.now() - lastGarageSeen) < GARAGE_TIMEOUT;
+  }
+
+  mqttPublish(
+    "/garage/online",
+    alive ? "true" : "false",
+    true
+  );
+}
+
 /* Process Messages: Light On/Off - Cover Toggle */
 Shelly.addEventHandler(function (event) {
   if (
@@ -365,7 +419,15 @@ Shelly.addEventHandler(function (event) {
     return;
   } else {
     log(LOG_DEBUG, "Message received: " + decryptedMessage);
-    mqttPublish("/lora/raw_rx", decryptedMessage, false);
+    /* Publish raw message for debugging */
+    if(LOG_LEVEL >= LOG_DEBUG) {
+      mqttPublish("/lora/raw_rx", decryptedMessage, false);
+    }
+
+    /* Update last seen timestamp and publish online status */
+    lastGarageSeen = Date.now();
+    mqttPublish("/garage/last_seen", new Date().toISOString(), true);
+    checkOnlineStatus();
 
     /* Light On */
     if ((decryptedMessage === msg_light_on) ||

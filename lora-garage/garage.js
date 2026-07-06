@@ -33,7 +33,11 @@ const LOG_LEVEL = LOG_INFO;
 const cfgAesKey = 'lora_aes_key';
 let aesKey = null;
 const CHECKSUM_SIZE = 4;
-const update_interval = 3600000; // 1h
+
+/* Garage Synchronization */
+const GARAGE_TIMEOUT = 7200000; // 2h
+const UPDATE_INTERVAL = GARAGE_TIMEOUT/2; // 1h
+const GARAGE_CHECK_INTERVAL = 600000; // 10 min
 
 /* Protocol Messages - Lights */
 const msg_light_on      = "LON";
@@ -43,8 +47,8 @@ const msg_cover_toggle  = "CTG";
 const msg_cover_ack     = "CAK";
 const msg_cover_opened  = "COP";
 const msg_cover_closed  = "CCL";
-const msg_cover_status  = "CST";
 /* Protocol Messages - Status */
+const msg_status_request         = "SRQ";
 const msg_status_open_light_on   = "O1";
 const msg_status_open_light_off  = "O0";
 const msg_status_closed_light_on = "C1";
@@ -58,12 +62,15 @@ function init() {
   /* Init */
   log(LOG_INFO, "LoRa Remote Node started");
 
+  /* init door state */
+  initDoorState();
+
   /* load AES key from shelly configuration */
   loadAesKey();
 
   /* Set update interval */
   Timer.set(
-    update_interval,
+    UPDATE_INTERVAL,
     true,
     sendCurrentStatus
   );
@@ -73,7 +80,7 @@ function init() {
     false,
     sendCurrentStatus
   );
-  log(LOG_INFO, "Update interval set to " + update_interval + " ms");
+  log(LOG_INFO, "Update interval set to " + UPDATE_INTERVAL + " ms");
 }
 
 /* Function to load AES key from Shelly configuration */
@@ -199,6 +206,13 @@ function generateChecksum(msg) {
 
 /* LoRa: Send Message */
 function sendMessage(message) {
+
+  /* check aes key */
+  if (!aesKey) {
+    log(LOG_WARN, "AES key not loaded");
+    return;
+  }
+
   const checkSumMessage = generateChecksum(message) + message;
   const encryptedMessage = encryptMessage(checkSumMessage, aesKey);
 
@@ -280,6 +294,42 @@ function decryptMessage(buffer, keyHex) {
   return finalMessage;
 }
 
+/* init door state */
+function initDoorState() {
+
+  let status =
+    Shelly.getComponentStatus("bthomesensor:201");
+
+  if (
+    status &&
+    status.value !== undefined
+  ) {
+    lastDoorState = status.value;
+
+    log(
+      LOG_INFO,
+      "Initial door state: " +
+      (lastDoorState ? "OPEN" : "CLOSED")
+    );
+  }
+}
+
+/* Send current status */
+function sendCurrentStatus() {
+
+  if (lastDoorState === null) {
+    return;
+  }
+
+  let lightState =
+    Shelly.getComponentStatus("switch:0").output;
+
+  sendMessage(
+    (lastDoorState ? "O" : "C") +
+    (lightState ? "1" : "0")
+  );
+}
+
 /* Process Messages: Light On/Off - Cover Toggle */
 Shelly.addEventHandler(function (event) {
   if (
@@ -337,15 +387,11 @@ Shelly.addEventHandler(function (event) {
       sendMessage(msg_cover_ack);
     }
 
-    /* Cover Status */
-    if (decryptedMessage === msg_cover_status) {
+    /* Status Request */
+    if (decryptedMessage === msg_status_request) {
 
       /* Send message via LoRa: Current cover status */
-      sendMessage(
-        lastDoorState ?
-        msg_cover_opened :
-        msg_cover_closed
-      );
+      sendCurrentStatus();
     }
   }
 });
@@ -393,22 +439,6 @@ Shelly.addStatusHandler(function(e) {
     sendMessage(msg_cover_closed);
   }
 });
-
-/* Send current status */
-function sendCurrentStatus() {
-
-  if (lastDoorState === null) {
-    return;
-  }
-
-  let lightState =
-    Shelly.getComponentStatus("switch:0").output;
-
-  sendMessage(
-    (lastDoorState ? "O" : "C") +
-    (lightState ? "1" : "0")
-  );
-}
 
 /* Main task */
 init();
