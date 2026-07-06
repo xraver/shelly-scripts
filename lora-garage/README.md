@@ -7,24 +7,25 @@ A distributed garage monitoring and control solution built with Shelly devices, 
 The system consists of two independent Shelly nodes communicating through LoRa.
 
 ```text
-┌─────────────────────┐
-│     Home Node       │
-│      home.js        │
-├─────────────────────┤
-│ MQTT Integration    │
-│ LoRa Receiver       │
-│ State Publishing    │
-└─────────┬───────────┘
-          │ LoRa
-          │
-┌─────────▼───────────┐
-│    Garage Node      │
-│     garage.js       │
-├─────────────────────┤
-│ Door Monitoring     │
-│ Command Execution   │
-│ State Reporting     │
-└─────────────────────┘
+              MQTT
+               ⇅
+┌─────────────────────────────┐
+│          Home Node          │
+│           home.js           │
+┌──────────────⇅──────────────┐
+               │
+               │ LoRa
+               │
+┌──────────────⇅──────────────┐
+│        Garage Node          │
+│         garage.js           │
+└──────────────┬──────────────┘
+               │
+               │ BLE / BTHome
+               │
+┌──────────────▲──────────────┐
+│  Shelly BLU Door / Window   │
+└─────────────────────────────┘
 ```
 
 ## Components
