@@ -44,6 +44,10 @@ const GARAGE_CHECK_INTERVAL = 600000; // 10 min
 const GARAGE_ENABLE_STATUS_REQUEST = false; // enable periodic status request
 const GARAGE_ENABLE_STATUS_SEND = !GARAGE_ENABLE_STATUS_REQUEST; // enable periodic status transmission
 
+/* Cover Control */
+const COVER_PULSE_MODE = false; // use script-based auto-off instead of Shelly Auto Off
+const COVER_PULSE_DURATION = 500; // ms
+
 /* Protocol Messages - Lights */
 const msg_light_on      = "LON";
 const msg_light_off     = "LOF";
@@ -60,6 +64,8 @@ const msg_status_closed_light_on   = "C1";
 const msg_status_closed_light_off  = "C0";
 const msg_status_unknown_light_on  = "U1";
 const msg_status_unknown_light_off = "U0";
+/* Reboot */
+const msg_remote_reboot = "RBT";
 
 /* Door State */
 let lastDoorState = null;
@@ -67,7 +73,7 @@ let lastDoorState = null;
 /* Init */
 function init() {
   /* Init */
-  log(LOG_INFO, "LoRa Remote Node started");
+  log(LOG_INFO, "LoRa Remote Garage started");
 
   /* init door state */
   initDoorState();
@@ -363,52 +369,76 @@ Shelly.addEventHandler(function (event) {
   //do nothing, message is not encrypted or AES key mismatch
   if (typeof decryptedMessage === "undefined") {
     return;
-  } else {
-    log(LOG_DEBUG, "Message received: " + decryptedMessage);
+  }
 
-    /* Light On */
-    if (decryptedMessage === msg_light_on) {
-      Shelly.call("Switch.Set", {
-        id: 0,
-        on: true
-      });
-    }
+  log(LOG_DEBUG, "Message received: " + decryptedMessage);
 
-    /* Light Off */
-    if (decryptedMessage === msg_light_off) {
-      Shelly.call("Switch.Set", {
-        id: 0,
-        on: false
-      });
-    }
+  /* Light On */
+  if (decryptedMessage === msg_light_on) {
+    Shelly.call("Switch.Set", {
+      id: 0,
+      on: true
+    });
+  }
 
-    /* Cover Toggle */
-    if (decryptedMessage === msg_cover_toggle) {
+  /* Light Off */
+  if (decryptedMessage === msg_light_off) {
+    Shelly.call("Switch.Set", {
+      id: 0,
+      on: false
+    });
+  }
 
-      /* Turn On */
-      Shelly.call("Switch.Set", {
-        id: 1,
-        on: true
-      });
+  /* Cover Toggle */
+  if (decryptedMessage === msg_cover_toggle) {
 
+    /* Turn On */
+    Shelly.call("Switch.Set", {
+      id: 1,
+      on: true
+    });
+
+    if(COVER_PULSE_MODE) {
       /* Turn Off */
-      Timer.set(500, false, function() {
+      Timer.set(COVER_PULSE_DURATION, false, function() {
         Shelly.call("Switch.Set", {
           id: 1,
           on: false
         });
       });
-
-      /* Send message via LoRa: Acknowledge command */
-      sendMessage(msg_cover_ack);
     }
 
-    /* Status Request */
-    if (decryptedMessage === msg_status_request) {
+    /* Send message via LoRa: Acknowledge command */
+    sendMessage(msg_cover_ack);
+  }
 
-      /* Send message via LoRa: Current cover status */
-      sendCurrentStatus();
-    }
+  /* Status Request */
+  if (decryptedMessage === msg_status_request) {
+
+    /* Send message via LoRa: Current cover status */
+    sendCurrentStatus();
+  }
+
+  /* Remote Reboot */
+  if (decryptedMessage === msg_remote_reboot) {
+
+    log(LOG_WARN, "LoRa Remote Garage reboot requested");
+
+    Shelly.call(
+      "Shelly.Reboot",
+      {},
+      function(_, error_code, error_message) {
+
+        if (error_code !== 0) {
+          log(
+            LOG_ERROR,
+            "Reboot failed: " + error_message
+          );
+        }
+      }
+    );
+
+    return;
   }
 });
 
