@@ -61,6 +61,8 @@ const msg_status_closed_light_on   = "C1";
 const msg_status_closed_light_off  = "C0";
 const msg_status_unknown_light_on  = "U1";
 const msg_status_unknown_light_off = "U0";
+/* Reboot */
+const msg_remote_reboot = "RBT";
 
 // MQTT configuration
 let mqttCfg;
@@ -248,6 +250,47 @@ function initMQTT() {
     }
   );
 
+  /* Bridge Reboot */
+  MQTT.subscribe(
+    mqttPrefix + "/system/reboot_bridge",
+    function(topic, message) {
+
+      if (message !== "REBOOT") {
+        return;
+      }
+
+      log(LOG_WARN, "Bridge reboot requested");
+
+      Shelly.call(
+        "Shelly.Reboot",
+        {},
+        function(_, error_code, error_message) {
+          if (error_code !== 0) {
+            log(
+              LOG_ERROR,
+              "Reboot failed: " + error_message
+            );
+          }
+        }
+      );
+    }
+  );
+
+  /* Garage Reboot */
+  MQTT.subscribe(
+    mqttPrefix + "/system/reboot_garage",
+    function(topic, message) {
+
+      if (message !== "REBOOT") {
+        return;
+      }
+
+      log(LOG_WARN, "Garage reboot requested");
+
+      sendMessage(msg_remote_reboot);
+    }
+  );
+
   log(LOG_INFO, "MQTT subscriptions active");
 }
 
@@ -303,6 +346,20 @@ function publishHADiscovery() {
       stat_t: mqttPrefix + "/cover/status",
       pl_open: "TOGGLE",
       pl_cls: "TOGGLE"
+    }),
+    0,
+    true
+  );
+
+  /* Cover Button */
+  MQTT.publish(
+    "homeassistant/button/garage_pulse/config",
+    JSON.stringify({
+      name: "Pulsante Serranda Garage",
+      uniq_id: "garage_pulse",
+      device: device,
+      cmd_t: mqttPrefix + "/cover/set",
+      pl_prs: "TOGGLE"
     }),
     0,
     true
@@ -376,6 +433,7 @@ function publishHADiscovery() {
     );
   }
 
+  /* Availability */
   MQTT.publish(
     "homeassistant/sensor/garage_availability/config",
     JSON.stringify({
@@ -386,6 +444,38 @@ function publishHADiscovery() {
       entity_category: "diagnostic",
       enabled_by_default: false,
       icon: "mdi:server-network"
+    }),
+    0,
+    true
+  );
+
+  /* Reboot Bridge */
+  MQTT.publish(
+    "homeassistant/button/garage_reboot_bridge/config",
+    JSON.stringify({
+      name: "Riavvia Bridge LoRa",
+      uniq_id: "garage_reboot_bridge",
+      device: device,
+      entity_category: "diagnostic",
+      icon: "mdi:restart",
+      cmd_t: mqttPrefix + "/system/reboot_bridge",
+      pl_prs: "REBOOT"
+    }),
+    0,
+    true
+  );
+
+  /* Reboot Garage */
+  MQTT.publish(
+    "homeassistant/button/garage_reboot_garage/config",
+    JSON.stringify({
+      name: "Riavvia Garage",
+      uniq_id: "garage_reboot_garage",
+      device: device,
+      entity_category: "diagnostic",
+      icon: "mdi:restart",
+      cmd_t: mqttPrefix + "/system/reboot_garage",
+      pl_prs: "REBOOT"
     }),
     0,
     true
@@ -573,7 +663,7 @@ function requestUpdate() {
   sendMessage(msg_status_request);
 }
 
-/* Process Messages: Light On/Off - Cover Toggle */
+/* Process incoming LoRa messages */
 Shelly.addEventHandler(function (event) {
   if (
     typeof event !== 'object' ||
