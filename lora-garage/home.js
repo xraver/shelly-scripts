@@ -32,11 +32,18 @@ const LOG_LEVEL = LOG_INFO;
 const cfgAesKey = 'lora_aes_key';
 let aesKey = null;
 const CHECKSUM_SIZE = 4;
+const LORA_PEER_ID = 100;
+const ENABLE_HEARTBEAT = false; // enable periodic heartbeat message
+const LORA_HEARTBEAT_INTERVAL = 600000; // 10 min
 
 /* Garage Synchronization */
 const GARAGE_TIMEOUT = 7200000; // 2h
-const UPDATE_INTERVAL = GARAGE_TIMEOUT/2; // 1h
+const GARAGE_REQUEST_INTERVAL = GARAGE_TIMEOUT/2; // 1h
+const GARAGE_UPDATE_INTERVAL = GARAGE_TIMEOUT/2; // 1h
 const GARAGE_CHECK_INTERVAL = 600000; // 10 min
+/* Garage Status Sync: Local polling or remote update? */
+const GARAGE_ENABLE_STATUS_REQUEST = false; // enable periodic status request
+const GARAGE_ENABLE_STATUS_SEND = !GARAGE_ENABLE_STATUS_REQUEST; // enable periodic status transmission
 
 /* Protocol Messages - Lights */
 const msg_light_on      = "LON";
@@ -47,18 +54,20 @@ const msg_cover_ack     = "CAK";
 const msg_cover_opened  = "COP";
 const msg_cover_closed  = "CCL";
 /* Protocol Messages - Status */
-const msg_status_request         = "SRQ";
-const msg_status_open_light_on   = "O1";
-const msg_status_open_light_off  = "O0";
-const msg_status_closed_light_on = "C1";
-const msg_status_closed_light_off= "C0";
+const msg_status_request           = "SRQ";
+const msg_status_open_light_on     = "O1";
+const msg_status_open_light_off    = "O0";
+const msg_status_closed_light_on   = "C1";
+const msg_status_closed_light_off  = "C0";
+const msg_status_unknown_light_on  = "U1";
+const msg_status_unknown_light_off = "U0";
 
 // MQTT configuration
 let mqttCfg;
 let mqttPrefix;
 
 /* Garage Last Seen timestamp */
-let lastGarageSeen = null;
+let lastGarageSeen = 0;
 
 /* Init */
 function init() {
@@ -71,9 +80,6 @@ function init() {
   /* Init MQTT */
   initMQTT();
 
-  /* first check to init structures */
-  checkOnlineStatus();
-
   /* Periodically check garage online status */
   Timer.set(
     GARAGE_CHECK_INTERVAL,
@@ -81,14 +87,23 @@ function init() {
     checkOnlineStatus
   );
 
+  /* Periodically request garage status */
+  if(GARAGE_ENABLE_STATUS_REQUEST) {
+    Timer.set(
+      GARAGE_REQUEST_INTERVAL,
+      true,
+      requestUpdate
+    );
+  }
+
   /* Force status request after bootstrap */
   Timer.set(
-    5000,
+    10000,
     false,
-    function() {
-      sendMessage(msg_status_request);
-    }
+    requestUpdate
   );
+
+  log(LOG_INFO, "Garage request interval set to " + GARAGE_REQUEST_INTERVAL + " ms");
   log(LOG_INFO, "Garage check interval set to " + GARAGE_CHECK_INTERVAL + " ms");
 }
 
@@ -109,9 +124,10 @@ function loadAesKey() {
         );
       }
 
+      log(LOG_INFO, "AES Key loaded");
       log(
-        LOG_INFO,
-        "AES Key: " + result.value
+        LOG_DEBUG,
+        "AES Key: " + result.value.substr(0, 8) + "..."
       );
 
       aesKey = result.value;
@@ -174,11 +190,6 @@ function log(level, msg) {
 /* Initialize MQTT Commands */
 function initMQTT() {
 
-  if (!MQTT.isConnected()) {
-    log(LOG_WARN, "MQTT not connected");
-    return;
-  }
-
   // Get MQTT prefix from config
   mqttCfg = Shelly.getComponentConfig("mqtt");
   mqttPrefix = mqttCfg.topic_prefix;
@@ -186,14 +197,22 @@ function initMQTT() {
     mqttPrefix = Shelly.getDeviceInfo().id;
   }
 
-  mqttPublish("/lora/online", "true", false);
-  mqttPublish("/lora/heartbeat", new Date().toISOString(), false);
+  if (!MQTT.isConnected()) {
+    log(LOG_WARN, "MQTT not connected");
+    return;
+  }
 
-  /* Refresh every 5 minutes */
-  Timer.set(300000, true, function() {
-    mqttPublish("/lora/online", "true", true);
-    mqttPublish("/lora/heartbeat", new Date().toISOString(), false);
-  });
+  /* Publish device data to homeassistant via MQTT */
+  publishHADiscovery();
+
+  if (ENABLE_HEARTBEAT) {
+    mqttPublish("/lora/heartbeat", new Date().toISOString(), true);
+
+    /* Refresh status */
+    Timer.set(LORA_HEARTBEAT_INTERVAL, true, function() {
+      mqttPublish("/lora/heartbeat", new Date().toISOString(), true);
+    });
+  }
 
   MQTT.subscribe(
     mqttPrefix + "/cover/set",
@@ -235,6 +254,7 @@ function initMQTT() {
 /* MQTT Publish */
 function mqttPublish(topic, payload, retain) {
   if (!MQTT.isConnected()) {
+    log(LOG_WARN, "MQTT not connected");
     return;
   }
 
@@ -244,6 +264,134 @@ function mqttPublish(topic, payload, retain) {
     0,
     retain
   );
+}
+
+/* Home Assistant MQTT Discovery */
+function publishHADiscovery() {
+
+  const device = {
+    identifiers: ["garage_lora"],
+    manufacturer: "Shelly",
+    model: "Gen4 + LoRa Add-on",
+    name: "Garage LoRa"
+  };
+
+  /* Light */
+  MQTT.publish(
+    "homeassistant/light/garage_light/config",
+    JSON.stringify({
+      name: "Luce Garage",
+      uniq_id: "garage_light",
+      device: device,
+      cmd_t: mqttPrefix + "/light/set",
+      stat_t: mqttPrefix + "/light/status",
+      pl_on: "ON",
+      pl_off: "OFF"
+    }),
+    0,
+    true
+  );
+
+  /* Cover */
+  MQTT.publish(
+    "homeassistant/cover/garage_cover/config",
+    JSON.stringify({
+      name: "Serranda Garage",
+      uniq_id: "garage_cover",
+      device: device,
+      cmd_t: mqttPrefix + "/cover/set",
+      stat_t: mqttPrefix + "/cover/status",
+      pl_open: "TOGGLE",
+      pl_cls: "TOGGLE"
+    }),
+    0,
+    true
+  );
+
+  /* Cover Door Sensor */
+  MQTT.publish(
+    "homeassistant/binary_sensor/garage_door/config",
+    JSON.stringify({
+      name: "Serranda Garage",
+      uniq_id: "garage_door",
+      device: device,
+      stat_t: mqttPrefix + "/cover/status",
+      avty_t: mqttPrefix + "/garage/availability",
+      pl_avail: "online",
+      pl_not_avail: "offline",
+      pl_on: "open",
+      pl_off: "closed",
+      dev_cla: "garage_door",
+      icon: "mdi:garage"
+    }),
+    0,
+    true
+  );
+
+  /* Online Status */
+  MQTT.publish(
+    "homeassistant/binary_sensor/garage_online/config",
+    JSON.stringify({
+      name: "Garage Online",
+      uniq_id: "garage_online",
+      device: device,
+      stat_t: mqttPrefix + "/garage/online",
+      pl_on: "true",
+      pl_off: "false",
+      dev_cla: "connectivity"
+    }),
+    0,
+    true
+  );
+
+  /* Last Seen */
+  MQTT.publish(
+    "homeassistant/sensor/garage_last_seen/config",
+    JSON.stringify({
+      name: "Garage Last Seen",
+      uniq_id: "garage_last_seen",
+      device: device,
+      stat_t: mqttPrefix + "/garage/last_seen",
+      dev_cla: "timestamp",
+      icon: "mdi:clock-outline"
+    }),
+    0,
+    true
+  );
+
+  /* Heartbeat */
+  if (ENABLE_HEARTBEAT) {
+    MQTT.publish(
+      "homeassistant/sensor/lora_heartbeat/config",
+      JSON.stringify({
+        name: "LoRa Heartbeat",
+        uniq_id: "garage_lora_heartbeat",
+        device: device,
+        stat_t: mqttPrefix + "/lora/heartbeat",
+        dev_cla: "timestamp",
+        icon: "mdi:heart-pulse"
+      }),
+      0,
+      true
+    );
+  }
+
+  MQTT.publish(
+    "homeassistant/sensor/garage_availability/config",
+    JSON.stringify({
+      name: "Garage Availability",
+      uniq_id: "garage_availability",
+      device: device,
+      stat_t: mqttPrefix + "/garage/availability",
+      entity_category: "diagnostic",
+      enabled_by_default: false,
+      icon: "mdi:server-network"
+    }),
+    0,
+    true
+  );
+
+  log(LOG_INFO, "Home Assistant Discovery published");
 }
 
 /* LoRa: Encrypt Message */
@@ -307,7 +455,7 @@ function sendMessage(message) {
 
   Shelly.call(
     'Lora.SendBytes',
-    { id: 100, data: btoa(encryptedMessage) },
+    { id: LORA_PEER_ID, data: btoa(encryptedMessage) },
     function (_, err_code, err_msg) {
       if (err_code !== 0) {
         log(
@@ -368,6 +516,11 @@ function decryptMessage(buffer, keyHex) {
     return s;
   }
 
+  if (!keyHex) {
+    log(LOG_WARN, "AES key not loaded");
+    return;
+  }
+
   const key = fromHex(keyHex);
   const decrypted = AES.decrypt(buffer, key, { mode: 'ECB' });
 
@@ -386,18 +539,38 @@ function decryptMessage(buffer, keyHex) {
 /* Check Garage Status*/
 function checkOnlineStatus() {
 
-  let alive = false;
-
-  if (lastGarageSeen !== null) {
-    alive =
-      (Date.now() - lastGarageSeen) < GARAGE_TIMEOUT;
-  }
+  const alive = (Date.now() - lastGarageSeen) < GARAGE_TIMEOUT;
 
   mqttPublish(
     "/garage/online",
     alive ? "true" : "false",
     true
   );
+
+  mqttPublish(
+    "/garage/availability",
+    alive ? "online" : "offline",
+    true
+  );
+}
+
+/* Mark garage as online */
+function markGarageOnline() {
+
+  lastGarageSeen = Date.now();
+
+  mqttPublish(
+    "/garage/last_seen",
+    new Date().toISOString(),
+    true
+  );
+
+  checkOnlineStatus();
+}
+
+/* Send request for update */
+function requestUpdate() {
+  sendMessage(msg_status_request);
 }
 
 /* Process Messages: Light On/Off - Cover Toggle */
@@ -417,53 +590,60 @@ Shelly.addEventHandler(function (event) {
   //do nothing, message is not encrypted or AES key mismatch
   if (typeof decryptedMessage === "undefined") {
     return;
-  } else {
-    log(LOG_DEBUG, "Message received: " + decryptedMessage);
-    /* Publish raw message for debugging */
-    if(LOG_LEVEL >= LOG_DEBUG) {
-      mqttPublish("/lora/raw_rx", decryptedMessage, false);
-    }
+  }
 
-    /* Update last seen timestamp and publish online status */
-    lastGarageSeen = Date.now();
-    mqttPublish("/garage/last_seen", new Date().toISOString(), true);
-    checkOnlineStatus();
+  log(LOG_DEBUG, "Message received: " + decryptedMessage);
+  /* Publish raw message for debugging */
+  if(LOG_LEVEL >= LOG_DEBUG) {
+    mqttPublish("/lora/raw_rx", decryptedMessage, false);
+  }
 
-    /* Light On */
-    if ((decryptedMessage === msg_light_on) ||
-        (decryptedMessage === msg_status_open_light_on) ||
-        (decryptedMessage === msg_status_closed_light_on) ) {
-      log(LOG_INFO, "Light On");
-      mqttPublish("/light/status", "ON", true);
-    }
+  /* Update last seen timestamp and publish online status */
+  markGarageOnline();
 
-    /* Light Off */
-    if ((decryptedMessage === msg_light_off) ||
-        (decryptedMessage === msg_status_open_light_off) ||
-        (decryptedMessage === msg_status_closed_light_off) ) {
-      log(LOG_INFO, "Light Off");
-      mqttPublish("/light/status", "OFF", true);
-    }
+  /* Light On */
+  if ((decryptedMessage === msg_light_on) ||
+      (decryptedMessage === msg_status_open_light_on) ||
+      (decryptedMessage === msg_status_closed_light_on) ||
+      (decryptedMessage === msg_status_unknown_light_on) ) {
+    log(LOG_INFO, "Light On");
+    mqttPublish("/light/status", "ON", true);
+  }
 
-    if (decryptedMessage === msg_cover_ack) {
-      log(LOG_INFO, "Cover command executed");
-      mqttPublish("/cover/ack", new Date().toISOString(), false);
-    }
+  /* Light Off */
+  if ((decryptedMessage === msg_light_off) ||
+      (decryptedMessage === msg_status_open_light_off) ||
+      (decryptedMessage === msg_status_closed_light_off) ||
+      (decryptedMessage === msg_status_unknown_light_off) ) {
+    log(LOG_INFO, "Light Off");
+    mqttPublish("/light/status", "OFF", true);
+  }
 
-    if ((decryptedMessage === msg_cover_opened) ||
-        (decryptedMessage === msg_status_open_light_on) ||
-        (decryptedMessage === msg_status_open_light_off)) {
-      log(LOG_INFO, "Cover opened");
-      mqttPublish("/cover/status", "OPENED", true);
-    }
+  if (decryptedMessage === msg_cover_ack) {
+    log(LOG_INFO, "Cover command executed");
+    mqttPublish("/cover/ack", new Date().toISOString(), false);
+  }
 
-    if ((decryptedMessage === msg_cover_closed) ||
-        (decryptedMessage === msg_status_closed_light_on) ||
-        (decryptedMessage === msg_status_closed_light_off)) {
-      log(LOG_INFO, "Cover closed");
-      mqttPublish("/cover/status", "CLOSED", true);
-    }
+  if ((decryptedMessage === msg_cover_opened) ||
+      (decryptedMessage === msg_status_open_light_on) ||
+      (decryptedMessage === msg_status_open_light_off)) {
+    log(LOG_INFO, "Cover opened");
+    mqttPublish("/cover/status", "open", true);
+  }
+
+  if ((decryptedMessage === msg_cover_closed) ||
+      (decryptedMessage === msg_status_closed_light_on) ||
+      (decryptedMessage === msg_status_closed_light_off)) {
+    log(LOG_INFO, "Cover closed");
+    mqttPublish("/cover/status", "closed", true);
+  }
+
+  if ((decryptedMessage === msg_status_unknown_light_on) ||
+      (decryptedMessage === msg_status_unknown_light_off)) {
+    log(LOG_INFO, "Unknown cover status");
+    mqttPublish("/cover/status", "unknown", true);
   }
 });
 
+/* Main task */
 init();

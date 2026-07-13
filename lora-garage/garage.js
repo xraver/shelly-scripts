@@ -33,11 +33,16 @@ const LOG_LEVEL = LOG_INFO;
 const cfgAesKey = 'lora_aes_key';
 let aesKey = null;
 const CHECKSUM_SIZE = 4;
+const LORA_PEER_ID = 100;
 
 /* Garage Synchronization */
 const GARAGE_TIMEOUT = 7200000; // 2h
-const UPDATE_INTERVAL = GARAGE_TIMEOUT/2; // 1h
+const GARAGE_REQUEST_INTERVAL = GARAGE_TIMEOUT/2; // 1h
+const GARAGE_UPDATE_INTERVAL = GARAGE_TIMEOUT/2; // 1h
 const GARAGE_CHECK_INTERVAL = 600000; // 10 min
+/* Garage Status Sync: Local polling or remote update? */
+const GARAGE_ENABLE_STATUS_REQUEST = false; // enable periodic status request
+const GARAGE_ENABLE_STATUS_SEND = !GARAGE_ENABLE_STATUS_REQUEST; // enable periodic status transmission
 
 /* Protocol Messages - Lights */
 const msg_light_on      = "LON";
@@ -48,11 +53,13 @@ const msg_cover_ack     = "CAK";
 const msg_cover_opened  = "COP";
 const msg_cover_closed  = "CCL";
 /* Protocol Messages - Status */
-const msg_status_request         = "SRQ";
-const msg_status_open_light_on   = "O1";
-const msg_status_open_light_off  = "O0";
-const msg_status_closed_light_on = "C1";
-const msg_status_closed_light_off= "C0";
+const msg_status_request           = "SRQ";
+const msg_status_open_light_on     = "O1";
+const msg_status_open_light_off    = "O0";
+const msg_status_closed_light_on   = "C1";
+const msg_status_closed_light_off  = "C0";
+const msg_status_unknown_light_on  = "U1";
+const msg_status_unknown_light_off = "U0";
 
 /* Door State */
 let lastDoorState = null;
@@ -68,19 +75,23 @@ function init() {
   /* load AES key from shelly configuration */
   loadAesKey();
 
-  /* Set update interval */
-  Timer.set(
-    UPDATE_INTERVAL,
-    true,
-    sendCurrentStatus
-  );
+  /* Periodically send garage status */
+  if(GARAGE_ENABLE_STATUS_SEND){
+    Timer.set(
+      GARAGE_UPDATE_INTERVAL,
+      true,
+      sendCurrentStatus
+    );
+  }
+
   /* Force update after boostrap */
   Timer.set(
     5000,
     false,
     sendCurrentStatus
   );
-  log(LOG_INFO, "Update interval set to " + UPDATE_INTERVAL + " ms");
+
+  log(LOG_INFO, "Garage update interval set to " + GARAGE_UPDATE_INTERVAL + " ms");
 }
 
 /* Function to load AES key from Shelly configuration */
@@ -100,9 +111,10 @@ function loadAesKey() {
         );
       }
 
+      log(LOG_INFO, "AES Key loaded");
       log(
-        LOG_INFO,
-        "AES Key: " + result.value
+        LOG_DEBUG,
+        "AES Key: " + result.value.substr(0, 8) + "..."
       );
 
       aesKey = result.value;
@@ -218,7 +230,7 @@ function sendMessage(message) {
 
   Shelly.call(
     'Lora.SendBytes',
-    { id: 100, data: btoa(encryptedMessage) },
+    { id: LORA_PEER_ID, data: btoa(encryptedMessage) },
     function (_, err_code, err_msg) {
       if (err_code !== 0) {
         log(
@@ -279,6 +291,11 @@ function decryptMessage(buffer, keyHex) {
     return s;
   }
 
+  if (!keyHex) {
+    log(LOG_WARN, "AES key not loaded");
+    return;
+  }
+
   const key = fromHex(keyHex);
   const decrypted = AES.decrypt(buffer, key, { mode: 'ECB' });
 
@@ -297,8 +314,7 @@ function decryptMessage(buffer, keyHex) {
 /* init door state */
 function initDoorState() {
 
-  let status =
-    Shelly.getComponentStatus("bthomesensor:201");
+  const status = Shelly.getComponentStatus("bthomesensor:201");
 
   if (
     status &&
@@ -317,12 +333,12 @@ function initDoorState() {
 /* Send current status */
 function sendCurrentStatus() {
 
+  const lightState = Shelly.getComponentStatus("switch:0").output;
+
   if (lastDoorState === null) {
+    sendMessage("U" + (lightState ? "1" : "0"));
     return;
   }
-
-  let lightState =
-    Shelly.getComponentStatus("switch:0").output;
 
   sendMessage(
     (lastDoorState ? "O" : "C") +
