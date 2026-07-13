@@ -61,7 +61,13 @@ const msg_status_closed_light_on   = "C1";
 const msg_status_closed_light_off  = "C0";
 const msg_status_unknown_light_on  = "U1";
 const msg_status_unknown_light_off = "U0";
-/* Reboot */
+/* Protocol Messages - Battery */
+const msg_battery_100 = "B4";
+const msg_battery_75  = "B3";
+const msg_battery_50  = "B2";
+const msg_battery_25  = "B1";
+const msg_battery_0   = "B0";
+/* Protocol Messages - Reboot */
 const msg_remote_reboot = "RBT";
 
 // MQTT configuration
@@ -353,10 +359,10 @@ function publishHADiscovery() {
 
   /* Cover Button */
   MQTT.publish(
-    "homeassistant/button/garage_pulse/config",
+    "homeassistant/button/garage_cover_button/config",
     JSON.stringify({
       name: "Pulsante Serranda Garage",
-      uniq_id: "garage_pulse",
+      uniq_id: "garage_cover_button",
       device: device,
       cmd_t: mqttPrefix + "/cover/set",
       pl_prs: "TOGGLE"
@@ -365,12 +371,12 @@ function publishHADiscovery() {
     true
   );
 
-  /* Cover Door Sensor */
+  /* Door Sensor Contact */
   MQTT.publish(
-    "homeassistant/binary_sensor/garage_door/config",
+    "homeassistant/binary_sensor/garage_door_sensor_contact/config",
     JSON.stringify({
       name: "Serranda Garage",
-      uniq_id: "garage_door",
+      uniq_id: "garage_door_sensor_contact",
       device: device,
       stat_t: mqttPrefix + "/cover/status",
       avty_t: mqttPrefix + "/garage/availability",
@@ -378,8 +384,24 @@ function publishHADiscovery() {
       pl_not_avail: "offline",
       pl_on: "open",
       pl_off: "closed",
-      dev_cla: "garage_door",
-      icon: "mdi:garage"
+      dev_cla: "garage_door"
+    }),
+    0,
+    true
+  );
+
+  /* Battery */
+  MQTT.publish(
+    "homeassistant/sensor/garage_door_sensor_battery/config",
+    JSON.stringify({
+      name: "Batteria Sensore Porta",
+      uniq_id: "garage_door_sensor_battery",
+      device: device,
+      stat_t: mqttPrefix + "/door_sensor/battery",
+      dev_cla: "battery",
+      unit_of_meas: "%",
+      entity_category: "diagnostic",
+      icon: "mdi:battery"
     }),
     0,
     true
@@ -419,7 +441,7 @@ function publishHADiscovery() {
   /* Heartbeat */
   if (ENABLE_HEARTBEAT) {
     MQTT.publish(
-      "homeassistant/sensor/lora_heartbeat/config",
+      "homeassistant/sensor/garage_lora_heartbeat/config",
       JSON.stringify({
         name: "LoRa Heartbeat",
         uniq_id: "garage_lora_heartbeat",
@@ -709,11 +731,13 @@ Shelly.addEventHandler(function (event) {
     mqttPublish("/light/status", "OFF", true);
   }
 
+  /* Cover Command Ack*/
   if (decryptedMessage === msg_cover_ack) {
     log(LOG_INFO, "Cover command executed");
     mqttPublish("/cover/ack", new Date().toISOString(), false);
   }
 
+  /* Cover Status Opened */
   if ((decryptedMessage === msg_cover_opened) ||
       (decryptedMessage === msg_status_open_light_on) ||
       (decryptedMessage === msg_status_open_light_off)) {
@@ -721,6 +745,7 @@ Shelly.addEventHandler(function (event) {
     mqttPublish("/cover/status", "open", true);
   }
 
+  /* Cover Status Closed */
   if ((decryptedMessage === msg_cover_closed) ||
       (decryptedMessage === msg_status_closed_light_on) ||
       (decryptedMessage === msg_status_closed_light_off)) {
@@ -728,10 +753,37 @@ Shelly.addEventHandler(function (event) {
     mqttPublish("/cover/status", "closed", true);
   }
 
+  /* Cover Status Unknown */
   if ((decryptedMessage === msg_status_unknown_light_on) ||
       (decryptedMessage === msg_status_unknown_light_off)) {
     log(LOG_INFO, "Unknown cover status");
     mqttPublish("/cover/status", "unknown", true);
+  }
+
+  /* Battery Status */
+  if(decryptedMessage === msg_battery_100) {
+    log(LOG_INFO, "Battery level: 100%");
+    mqttPublish("/door_sensor/battery", "100", true);
+  }
+
+  if(decryptedMessage === msg_battery_75) {
+    log(LOG_INFO, "Battery level: 75%");
+    mqttPublish("/door_sensor/battery", "75", true);
+  }
+
+  if(decryptedMessage === msg_battery_50) {
+    log(LOG_INFO, "Battery level: 50%");
+    mqttPublish("/door_sensor/battery", "50", true);
+  }
+
+  if(decryptedMessage === msg_battery_25) {
+    log(LOG_INFO, "Battery level: 25%");
+    mqttPublish("/door_sensor/battery", "25", true);
+  }
+
+  if(decryptedMessage === msg_battery_0) {
+    log(LOG_INFO, "Battery level: 0%");
+    mqttPublish("/door_sensor/battery", "0", true);
   }
 });
 
