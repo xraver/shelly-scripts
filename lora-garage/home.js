@@ -73,6 +73,7 @@ const msg_remote_reboot = "RBT";
 // MQTT configuration
 let mqttCfg;
 let mqttPrefix;
+let mqttReady = false;
 
 /* Garage Last Seen timestamp */
 let lastGarageSeen = 0;
@@ -205,23 +206,8 @@ function initMQTT() {
     mqttPrefix = Shelly.getDeviceInfo().id;
   }
 
-  if (!MQTT.isConnected()) {
-    log(LOG_WARN, "MQTT not connected");
-    return;
-  }
-
-  /* Publish device data to homeassistant via MQTT */
-  publishHADiscovery();
-
-  if (ENABLE_HEARTBEAT) {
-    mqttPublish("/lora/heartbeat", new Date().toISOString(), true);
-
-    /* Refresh status */
-    Timer.set(LORA_HEARTBEAT_INTERVAL, true, function() {
-      mqttPublish("/lora/heartbeat", new Date().toISOString(), true);
-    });
-  }
-
+  /* MQTT Subscriptions */
+  /* Cover */
   MQTT.subscribe(
     mqttPrefix + "/cover/set",
     function(topic, message) {
@@ -237,6 +223,7 @@ function initMQTT() {
     }
   );
 
+  /* Lights */
   MQTT.subscribe(
     mqttPrefix + "/light/set",
     function(topic, message) {
@@ -266,6 +253,18 @@ function initMQTT() {
       }
 
       log(LOG_WARN, "Bridge reboot requested");
+
+      mqttPublish(
+        "/garage/online",
+        "false",
+        true
+      );
+
+      mqttPublish(
+        "/garage/availability",
+        "offline",
+        true
+      );
 
       Shelly.call(
         "Shelly.Reboot",
@@ -298,6 +297,41 @@ function initMQTT() {
   );
 
   log(LOG_INFO, "MQTT subscriptions active");
+
+  waitForMQTT();
+}
+
+/* Wait for MQTT connection before initial publish */
+function waitForMQTT() {
+
+  if (mqttReady) {
+    return;
+  }
+
+  /* Check MQTT connection */
+  if (!MQTT.isConnected()) {
+    log(LOG_WARN, "MQTT not connected, retry in 5s");
+    Timer.set(5000, false, waitForMQTT);
+    return;
+  } else {
+    mqttReady = true;
+    log(LOG_INFO, "MQTT connected");
+  }
+
+  /* Publish device data to homeassistant via MQTT */
+  publishHADiscovery();
+
+  /* Publish state */
+  checkOnlineStatus();
+
+  if (ENABLE_HEARTBEAT) {
+    mqttPublish("/lora/heartbeat", new Date().toISOString(), true);
+
+    /* Refresh status */
+    Timer.set(LORA_HEARTBEAT_INTERVAL, true, function() {
+      mqttPublish("/lora/heartbeat", new Date().toISOString(), true);
+    });
+  }
 }
 
 /* MQTT Publish */
@@ -680,7 +714,7 @@ function markGarageOnline() {
   checkOnlineStatus();
 }
 
-/* Send request for update */
+/* Send update request */
 function requestUpdate() {
   sendMessage(msg_status_request);
 }
