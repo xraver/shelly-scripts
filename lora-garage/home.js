@@ -1,17 +1,20 @@
 /**
- * @title LoRa Garage - Home Controller
- * @description Home node responsible for MQTT integration, LoRa message reception and state distribution.
+ * @title LoRa Garage - MQTT Bridge
+ * @description Home node acting as a bidirectional bridge between LoRa and MQTT,
+ *              responsible for state synchronization, Home Assistant integration and
+ *              garage availability monitoring.
  * @status production
  * @author Giorgio Ravera
  * @date 08/07/2026
  * @version 1.0
  *
  * Responsibilities:
- * - Receive encrypted LoRa messages
+ * - Receive and decrypt LoRa messages
  * - Verify message integrity
- * - Bridge LoRa events to MQTT
- * - Publish node heartbeat
- * - Publish garage and lighting events
+ * - Forward events between MQTT and LoRa
+ * - Publish Home Assistant discovery entities
+ * - Monitor garage availability and heartbeat
+ * - Publish garage, cover and lighting states
  *
  * Hardware:
  * - Shelly Gen4 device
