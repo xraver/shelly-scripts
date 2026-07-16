@@ -1,6 +1,7 @@
 /**
- * @title LoRa Garage - Remote Node
- * @description Remote garage node responsible for door monitoring and event transmission via LoRa.
+ * @title LoRa Garage - Garage Node
+ * @description Remote garage node responsible for door and lighting monitoring,
+ *              command execution and state synchronization via LoRa.
  * @status production
  * @author Giorgio Ravera
  * @date 08/07/2026
@@ -29,6 +30,9 @@ const LOG_INFO  = 2;
 const LOG_DEBUG = 3;
 const LOG_LEVEL = LOG_INFO;
 
+// Boostrap delay
+const BOOTSTRAP_DELAY = 10000; // 10s
+
 // LoRa Parameters
 const cfgAesKey = 'lora_aes_key';
 let aesKey = null;
@@ -47,6 +51,9 @@ const GARAGE_ENABLE_STATUS_SEND = !GARAGE_ENABLE_STATUS_REQUEST; // enable perio
 /* Cover Control */
 const COVER_PULSE_MODE = false; // use script-based auto-off instead of Shelly Auto Off
 const COVER_PULSE_DURATION = 500; // ms
+
+/* Door Sensor Configuration */
+const DOOR_SENSOR_ID = "bthomesensor:201";
 
 /* Protocol Messages - Lights */
 const msg_light_on      = "LON";
@@ -75,8 +82,8 @@ function init() {
   /* Init */
   log(LOG_INFO, "LoRa Remote Garage started");
 
-  /* init door state */
-  initDoorState();
+  /* init door sensor */
+  initDoorSensor();
 
   /* load AES key from shelly configuration */
   loadAesKey();
@@ -92,7 +99,7 @@ function init() {
 
   /* Force update after boostrap */
   Timer.set(
-    5000,
+    BOOTSTRAP_DELAY,
     false,
     sendCurrentStatus
   );
@@ -317,10 +324,10 @@ function decryptMessage(buffer, keyHex) {
   return finalMessage;
 }
 
-/* init door state */
-function initDoorState() {
+/* init door sensor */
+function initDoorSensor() {
 
-  const status = Shelly.getComponentStatus("bthomesensor:201");
+  const status = Shelly.getComponentStatus(DOOR_SENSOR_ID);
 
   if (
     status &&

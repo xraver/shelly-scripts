@@ -31,6 +31,9 @@ const LOG_INFO  = 2;
 const LOG_DEBUG = 3;
 const LOG_LEVEL = LOG_INFO;
 
+// Boostrap delay
+const BOOTSTRAP_DELAY = 10000; // 10s
+
 // LoRa Parameters
 const cfgAesKey = 'lora_aes_key';
 let aesKey = null;
@@ -73,7 +76,7 @@ const msg_battery_0   = "B0";
 /* Protocol Messages - Reboot */
 const msg_remote_reboot = "RBT";
 
-// MQTT configuration
+// MQTT Configuration
 let mqttCfg;
 let mqttPrefix;
 let mqttReady = false;
@@ -110,7 +113,7 @@ function init() {
 
   /* Force status request after bootstrap */
   Timer.set(
-    10000,
+    BOOTSTRAP_DELAY,
     false,
     requestUpdate
   );
