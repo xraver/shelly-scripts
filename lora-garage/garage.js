@@ -71,10 +71,16 @@ const msg_status_closed_light_on   = "C1";
 const msg_status_closed_light_off  = "C0";
 const msg_status_unknown_light_on  = "U1";
 const msg_status_unknown_light_off = "U0";
-/* Reboot */
+/* Protocol Messages - Reboot */
 const msg_remote_reboot = "RBT";
 
-/* Door State */
+/* Output Switch IDs */
+const LIGHT_SWITCH_ID   = 0;
+const LIGHT_SWITCH_NAME = "switch:0";
+const COVER_SWITCH_ID   = 1;
+const COVER_SWITCH_NAME = "switch:1";
+
+/* Door Sensor - Door State */
 let lastDoorState = null;
 
 /* Init */
@@ -101,7 +107,9 @@ function init() {
   Timer.set(
     BOOTSTRAP_DELAY,
     false,
-    sendCurrentStatus
+    function() {
+      sendCurrentStatus();
+    }
   );
 
   log(LOG_INFO, "Garage update interval set to " + GARAGE_UPDATE_INTERVAL + " ms");
@@ -359,7 +367,7 @@ function initDoorSensor() {
 /* Send current status */
 function sendCurrentStatus() {
 
-  const lightState = Shelly.getComponentStatus("switch:0").output;
+  const lightState = Shelly.getComponentStatus(LIGHT_SWITCH_NAME).output;
 
   if (lastDoorState === null) {
     sendMessage("U" + (lightState ? "1" : "0"));
@@ -396,7 +404,7 @@ Shelly.addEventHandler(function (event) {
   /* Light On */
   if (decryptedMessage === msg_light_on) {
     Shelly.call("Switch.Set", {
-      id: 0,
+      id: LIGHT_SWITCH_ID,
       on: true
     });
   }
@@ -404,7 +412,7 @@ Shelly.addEventHandler(function (event) {
   /* Light Off */
   if (decryptedMessage === msg_light_off) {
     Shelly.call("Switch.Set", {
-      id: 0,
+      id: LIGHT_SWITCH_ID,
       on: false
     });
   }
@@ -413,23 +421,29 @@ Shelly.addEventHandler(function (event) {
   if (decryptedMessage === msg_cover_toggle) {
 
     /* Turn On */
-    Shelly.call("Switch.Set", {
-      id: 1,
-      on: true
-    });
+    Shelly.call(
+      "Switch.Set",
+      {
+        id: COVER_SWITCH_ID,
+        on: true
+      },
+      function(_, err_code) {
+        if (err_code === 0) {
+          /* Send message via LoRa: Acknowledge command */
+          sendMessage(msg_cover_ack);
+        }
+      }
+    );
 
     if(COVER_PULSE_MODE) {
       /* Turn Off */
       Timer.set(COVER_PULSE_DURATION, false, function() {
         Shelly.call("Switch.Set", {
-          id: 1,
+          id: COVER_SWITCH_ID,
           on: false
         });
       });
     }
-
-    /* Send message via LoRa: Acknowledge command */
-    sendMessage(msg_cover_ack);
   }
 
   /* Status Request */
