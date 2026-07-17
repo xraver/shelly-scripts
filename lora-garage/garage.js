@@ -30,11 +30,11 @@ const LOG_INFO  = 2;
 const LOG_DEBUG = 3;
 const LOG_LEVEL = LOG_INFO;
 
-// Boostrap delay
+// Bootstrap delay
 const BOOTSTRAP_DELAY = 10000; // 10s
 
 // LoRa Parameters
-const cfgAesKey = 'lora_aes_key';
+const LORA_COMPONENT = "lora:100";
 let aesKey = null;
 const CHECKSUM_SIZE = 4;
 const LORA_PEER_ID = 100;
@@ -85,8 +85,8 @@ function init() {
   /* init door sensor */
   initDoorSensor();
 
-  /* load AES key from shelly configuration */
-  loadAesKey();
+  /* read LoRa parameters from shelly configuration */
+  readLoraParameters();
 
   /* Periodically send garage status */
   if(GARAGE_ENABLE_STATUS_SEND){
@@ -107,31 +107,44 @@ function init() {
   log(LOG_INFO, "Garage update interval set to " + GARAGE_UPDATE_INTERVAL + " ms");
 }
 
-/* Function to load AES key from Shelly configuration */
-function loadAesKey() {
-  /* get AES key */
-  Shelly.call(
-    "KVS.Get",
-    {
-      key: cfgAesKey
-    },
-    function(result, error_code, error_message) {
+/* Function to read LoRa parameters from Shelly configuration */
+function readLoraParameters() {
+  let loraCfg = Shelly.getComponentConfig(LORA_COMPONENT);
 
-      if (error_code !== 0) {
-        throw new Error(
-          "FATAL: unable to load lora_aes_key: " +
-          error_message
-        );
-      }
+  if (!loraCfg || !loraCfg.shelr) {
+    throw new Error(
+      "FATAL: LoRa Add-on not detected"
+    );
+  }
 
-      log(LOG_INFO, "AES Key loaded");
-      log(
-        LOG_DEBUG,
-        "AES Key: " + result.value.substr(0, 8) + "..."
-      );
+  /* select TX key */
+  let txKey = loraCfg.shelr.tx_key;
+  if (txKey < 1 || txKey > 3) {
+    throw new Error("FATAL: No valid TX key selected. Configure Key under LoRa → Transport Layer → Encryption key");
+  }
 
-      aesKey = result.value;
-    }
+  /* Store AES key */
+  let keyName = "key" + txKey;
+  aesKey = loraCfg.shelr[keyName];
+  if (!aesKey) {
+    throw new Error(
+      "FATAL: Selected TX key (" + keyName + ") is not configured. Configure " + keyName + " under LoRa → Transport Layer."
+    );
+  }
+
+  log(
+    LOG_INFO,
+    "LoRa parameters loaded: " +
+    "band=" + loraCfg.band_plan +
+    ", freq=" + loraCfg.freq +
+    ", addr=" + loraCfg.shelr.lr_addr +
+    ", rx=" + loraCfg.rx_enable +
+    ", tx_key=" + txKey +
+    ", " + keyName + "=configured"
+  );
+  log(
+    LOG_DEBUG,
+    "AES Key: " + aesKey.substr(0, 8) + "..."
   );
 }
 

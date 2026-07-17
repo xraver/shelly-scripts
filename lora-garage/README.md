@@ -128,9 +128,14 @@ All LoRa payloads are:
 - Checksum protected
 - Validated before processing
 
-Configure a KVS entry named `lora_aes_key` containing a 256-bit AES key.
+Configure a LoRa encryption key in the Shelly LoRa Add-on settings:
 
-Example:
+- Select the active key under **LoRa → Transport Layer → Encryption key**
+- Configure the corresponding key value under **LoRa → Transport Layer → Key1, Key2 or Key3**
+
+Note: Use the same key value on both devices and select the same Encryption key index.
+
+You can either generate a key using the **Generate** button in the Shelly UI or create one manually:
 
 ```text
 openssl rand -hex 32
