@@ -54,6 +54,7 @@ const GARAGE_CHECK_INTERVAL = 600000; // 10 min
 /* Garage Status Sync: Local polling or remote update? */
 const GARAGE_ENABLE_STATUS_REQUEST = false; // enable periodic status request
 const GARAGE_ENABLE_STATUS_SEND = !GARAGE_ENABLE_STATUS_REQUEST; // enable periodic status transmission
+let garageOnline = null;
 
 /* Protocol Messages - Lights */
 const msg_light_on      = "LON";
@@ -106,6 +107,7 @@ function init() {
     true,
     checkOnlineStatus
   );
+  log(LOG_INFO, "Garage check interval set to " + Math.floor(GARAGE_CHECK_INTERVAL / 60000) + " m");
 
   /* Periodically request garage status */
   if(GARAGE_ENABLE_STATUS_REQUEST) {
@@ -115,12 +117,11 @@ function init() {
       requestUpdate
     );
   }
+  log(LOG_INFO, "Garage request interval set to " + Math.floor(GARAGE_REQUEST_INTERVAL / 60000) + " m");
 
   /* First status request */
   requestInitialStatus();
 
-  log(LOG_INFO, "Garage request interval set to " + GARAGE_REQUEST_INTERVAL + " ms");
-  log(LOG_INFO, "Garage check interval set to " + GARAGE_CHECK_INTERVAL + " ms");
 }
 
 /* Function to read LoRa parameters from Shelly configuration */
@@ -725,6 +726,11 @@ function checkOnlineStatus() {
 
   const alive = (Date.now() - lastGarageSeen) < GARAGE_TIMEOUT;
 
+  if (garageOnline === alive) {
+    return;
+  }
+  garageOnline = alive;
+
   mqttPublish(
     "/garage/online",
     alive ? "true" : "false",
@@ -736,6 +742,8 @@ function checkOnlineStatus() {
     alive ? "online" : "offline",
     true
   );
+
+  log(LOG_INFO, "Garage is now " + (alive ? "online" : "offline"));
 }
 
 /* Mark garage as online */

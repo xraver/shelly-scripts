@@ -106,6 +106,7 @@ function init() {
       sendCurrentStatus
     );
   }
+  log(LOG_INFO, "Garage update interval set to " + Math.floor(GARAGE_UPDATE_INTERVAL / 60000) + " m");
 
   /* First status message */
   sendInitialStatus();
