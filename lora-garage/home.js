@@ -31,8 +31,8 @@ const LOG_INFO  = 2;
 const LOG_DEBUG = 3;
 const LOG_LEVEL = LOG_INFO;
 
-// Bootstrap delay
-const BOOTSTRAP_DELAY = 10000; // 10s
+// Startup readiness check interval
+const STARTUP_CHECK_INTERVAL = 2000; // 2s
 
 // LoRa Parameters
 const LORA_COMPONENT = "lora:100";
@@ -41,6 +41,10 @@ const CHECKSUM_SIZE = 4;
 const LORA_PEER_ID = 100;
 const ENABLE_HEARTBEAT = false; // enable periodic heartbeat message
 const LORA_HEARTBEAT_INTERVAL = 600000; // 10 min
+const LORA_BOOTSTRAP_DELAY = 1000; // 1s
+const LORA_MAX_RETRIES = 5; // max retries for LoRa message send
+let loraReady = false;
+let loraTryCount = 0;
 
 /* Garage Synchronization */
 const GARAGE_TIMEOUT = 7200000; // 2h
@@ -77,6 +81,7 @@ const msg_battery_0   = "B0";
 const msg_remote_reboot = "RBT";
 
 // MQTT Configuration
+const MQTT_BOOTSTRAP_DELAY = 2000; // 2s
 let mqttCfg;
 let mqttPrefix;
 let mqttReady = false;
@@ -111,12 +116,8 @@ function init() {
     );
   }
 
-  /* Force status request after bootstrap */
-  Timer.set(
-    BOOTSTRAP_DELAY,
-    false,
-    requestUpdate
-  );
+  /* First status request */
+  requestInitialStatus();
 
   log(LOG_INFO, "Garage request interval set to " + GARAGE_REQUEST_INTERVAL + " ms");
   log(LOG_INFO, "Garage check interval set to " + GARAGE_CHECK_INTERVAL + " ms");
@@ -126,10 +127,22 @@ function init() {
 function readLoraParameters() {
   let loraCfg = Shelly.getComponentConfig(LORA_COMPONENT);
 
+  if (loraReady) {
+    return;
+  }
+
+  /* Check LoRa component */
   if (!loraCfg || !loraCfg.shelr) {
-    throw new Error(
-      "FATAL: LoRa Add-on not detected"
-    );
+    loraTryCount++;
+    if(loraTryCount > LORA_MAX_RETRIES) {
+      throw new Error("FATAL: LoRa Add-on not ready after " + LORA_MAX_RETRIES + " retries. Check LoRa Add-on is installed and configured.");
+    }
+    log(LOG_WARN, "LoRa Add-on not ready, retry in " + LORA_BOOTSTRAP_DELAY + "ms");
+    Timer.set(LORA_BOOTSTRAP_DELAY, false, readLoraParameters);
+    return;
+  } else {
+    loraReady = true;
+    log(LOG_INFO, "LoRa Add-on ready");
   }
 
   /* select TX key */
@@ -329,8 +342,8 @@ function waitForMQTT() {
 
   /* Check MQTT connection */
   if (!MQTT.isConnected()) {
-    log(LOG_WARN, "MQTT not connected, retry in 5s");
-    Timer.set(5000, false, waitForMQTT);
+    log(LOG_WARN, "MQTT not connected, retry in " + MQTT_BOOTSTRAP_DELAY + "ms");
+    Timer.set(MQTT_BOOTSTRAP_DELAY, false, waitForMQTT);
     return;
   } else {
     mqttReady = true;
@@ -604,6 +617,12 @@ function generateChecksum(msg) {
 /* LoRa: Send Message */
 function sendMessage(message) {
 
+  /* check LoRa */
+  if (!loraReady) {
+    log(LOG_WARN, "LoRa not ready");
+    return;
+  }
+
   /* check aes key */
   if (!aesKey) {
     log(LOG_WARN, "AES key not loaded");
@@ -731,6 +750,36 @@ function markGarageOnline() {
   );
 
   checkOnlineStatus();
+}
+
+/* Request initial status from garage */
+function requestInitialStatus() {
+
+  if (!loraReady || !mqttReady) {
+
+    log(
+      LOG_DEBUG,
+      "Waiting startup: loraReady=" +
+      loraReady +
+      ", mqttReady=" +
+      mqttReady
+    );
+
+    Timer.set(
+      STARTUP_CHECK_INTERVAL,
+      false,
+      requestInitialStatus
+    );
+
+    return;
+  }
+
+  log(
+    LOG_INFO,
+    "System ready, requesting garage status"
+  );
+
+  requestUpdate();
 }
 
 /* Send update request */

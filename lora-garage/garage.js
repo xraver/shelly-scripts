@@ -30,14 +30,18 @@ const LOG_INFO  = 2;
 const LOG_DEBUG = 3;
 const LOG_LEVEL = LOG_INFO;
 
-// Bootstrap delay
-const BOOTSTRAP_DELAY = 10000; // 10s
+// Startup readiness check interval
+const STARTUP_CHECK_INTERVAL = 2000; // 2s
 
 // LoRa Parameters
 const LORA_COMPONENT = "lora:100";
 let aesKey = null;
 const CHECKSUM_SIZE = 4;
 const LORA_PEER_ID = 100;
+const LORA_BOOTSTRAP_DELAY = 1000; // 1s
+const LORA_MAX_RETRIES = 5; // max retries for LoRa message send
+let loraReady = false;
+let loraTryCount = 0;
 
 /* Garage Synchronization */
 const GARAGE_TIMEOUT = 7200000; // 2h
@@ -103,26 +107,30 @@ function init() {
     );
   }
 
-  /* Force update after boostrap */
-  Timer.set(
-    BOOTSTRAP_DELAY,
-    false,
-    function() {
-      sendCurrentStatus();
-    }
-  );
-
-  log(LOG_INFO, "Garage update interval set to " + GARAGE_UPDATE_INTERVAL + " ms");
+  /* First status message */
+  sendInitialStatus();
 }
 
 /* Function to read LoRa parameters from Shelly configuration */
 function readLoraParameters() {
   let loraCfg = Shelly.getComponentConfig(LORA_COMPONENT);
 
+  if (loraReady) {
+    return;
+  }
+
+  /* Check LoRa component */
   if (!loraCfg || !loraCfg.shelr) {
-    throw new Error(
-      "FATAL: LoRa Add-on not detected"
-    );
+    loraTryCount++;
+    if(loraTryCount > LORA_MAX_RETRIES) {
+      throw new Error("FATAL: LoRa Add-on not ready after " + LORA_MAX_RETRIES + " retries. Check LoRa Add-on is installed and configured.");
+    }
+    log(LOG_WARN, "LoRa Add-on not ready, retry in " + LORA_BOOTSTRAP_DELAY + "ms");
+    Timer.set(LORA_BOOTSTRAP_DELAY, false, readLoraParameters);
+    return;
+  } else {
+    loraReady = true;
+    log(LOG_INFO, "LoRa Add-on ready");
   }
 
   /* select TX key */
@@ -253,6 +261,12 @@ function generateChecksum(msg) {
 /* LoRa: Send Message */
 function sendMessage(message) {
 
+  /* check LoRa */
+  if (!loraReady) {
+    log(LOG_WARN, "LoRa not ready");
+    return;
+  }
+
   /* check aes key */
   if (!aesKey) {
     log(LOG_WARN, "AES key not loaded");
@@ -350,10 +364,12 @@ function initDoorSensor() {
 
   const status = Shelly.getComponentStatus(DOOR_SENSOR_ID);
 
-  if (
-    status &&
-    status.value !== undefined
-  ) {
+  if (!status) {
+    return;
+  }
+
+  /* Door state */
+  if (status.value !== undefined) {
     lastDoorState = status.value;
 
     log(
@@ -362,6 +378,34 @@ function initDoorSensor() {
       (lastDoorState ? "OPEN" : "CLOSED")
     );
   }
+}
+
+/* Send initial status */
+function sendInitialStatus() {
+  if (!loraReady) {
+
+    log(
+      LOG_DEBUG,
+      "Waiting startup: loraReady=" +
+      loraReady
+    );
+
+    Timer.set(
+      STARTUP_CHECK_INTERVAL,
+      false,
+      sendInitialStatus
+    );
+
+    return;
+  }
+
+  log(
+    LOG_INFO,
+    "System ready, sending garage status"
+  );
+
+  sendCurrentStatus();
+  sendBatteryStatus();
 }
 
 /* Send current status */
